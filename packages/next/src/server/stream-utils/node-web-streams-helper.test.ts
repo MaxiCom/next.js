@@ -257,14 +257,11 @@ describe('node-web-stream-helpers', () => {
         const actual = new Uint8Array(expected.length)
         let i = 0
         const reader = output.getReader()
-        const d = new TextDecoder()
         let { done, value } = await reader.read()
-        console.log({ done, value, decoded: d.decode(value) })
         while (!done && value) {
           actual.set(value, i)
           i += value.length
           ;({ done, value } = await reader.read())
-          console.log({ done, value, decoded: d.decode(value) })
         }
         expect(actual).toStrictEqual(expected)
       })
