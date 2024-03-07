@@ -213,41 +213,41 @@ describe('node-web-stream-helpers', () => {
   describe('createRootLayoutValidatorStream', () => {})
   describe('chainTransformers', () => {})
   describe('continueFizzStream', () => {
+    const encoder = new TextEncoder()
+
+    const defaultInlinedDataStreamFactory = () =>
+      createMockReadableStream({ input: '<data>inlined data</data>' })
+
+    const defaultGetServerInsertedHTMLFactory = () => {
+      const serverInsertedHTMLStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue('<server-html>Server HTML</server-html>')
+          controller.close()
+        },
+      })
+      const reader = serverInsertedHTMLStream.getReader()
+      return async () => {
+        const { value } = await reader.read()
+        return value
+      }
+    }
     describe('pages router', () => {
-      const encoder = new TextEncoder()
       const defaultSuffix = '<suffix>suffix</suffix>'
-      const defaultInlinedDataStreamFactory = () =>
-        createMockReadableStream({ input: '<data>inlined data</data>' })
-      const defaultGetServerInsertedHTMLFactory = () => {
-        const serverInsertedHTMLStream = new ReadableStream({
-          start(controller) {
-            controller.enqueue('<server-html>Server HTML</server-html>')
-            controller.close()
-          },
-        })
-        const reader = serverInsertedHTMLStream.getReader()
-        return async () => {
-          const { value } = await reader.read()
-          return value
-        }
-      }
-      const defaultOptionsFactory = () => {
-        // values hardcoded based on usage of `continueFizzStream` in `server/render.tsx`
-        return {
-          isStaticGeneration: true, // always true
-          serverInsertedHTMLToHead: false, // always false
-          validateRootLayout: undefined, // always undefined
-          inlinedDataStream: defaultInlinedDataStreamFactory(),
-          getServerInsertedHTML: defaultGetServerInsertedHTMLFactory(),
-          suffix: defaultSuffix,
-        }
-      }
+      // values hardcoded based on usage of `continueFizzStream` in `server/render.tsx`
+      const defaultOptionsFactory = () => ({
+        isStaticGeneration: true, // always true
+        serverInsertedHTMLToHead: false, // always false
+        validateRootLayout: undefined, // always undefined
+        inlinedDataStream: defaultInlinedDataStreamFactory(),
+        getServerInsertedHTML: defaultGetServerInsertedHTMLFactory(),
+        suffix: defaultSuffix,
+      })
       const defaultReactReadableStreamFactory = () =>
         createMockReadableStream({
           input: `<html><head><title>My Website</title></head><body><div><h1>My Website</h1></div></body></html>`,
           byteCount: 8,
         })
-      it.only('should continue fizz stream operation using default arguments', async () => {
+      it('should continue fizz stream operation using default arguments', async () => {
         const input: ReactReadableStream = defaultReactReadableStreamFactory()
         // TODO: Somehow spy on `input.allReady` and assert it gets awaited
         const output = await continueFizzStream(input, defaultOptionsFactory())
@@ -264,6 +264,20 @@ describe('node-web-stream-helpers', () => {
           ;({ done, value } = await reader.read())
         }
         expect(actual).toStrictEqual(expected)
+      })
+    })
+    describe('app router', () => {
+      const defaultOptionsFactory = () => ({
+        inlinedDataStream: defaultInlinedDataStreamFactory(),
+        getServerInsertedHTML: defaultGetServerInsertedHTMLFactory(),
+        serverInsertedHTMLToHead: true,
+      })
+
+      it.todo('dev mode - (validateRootLayout = true)', () => {
+        const options = {
+          ...defaultOptionsFactory(),
+          validateRootLayout: true,
+        }
       })
     })
   })
