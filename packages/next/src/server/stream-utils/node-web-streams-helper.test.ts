@@ -231,8 +231,7 @@ describe('node-web-stream-helpers', () => {
         new ReadableStream({
           async pull(controller) {
             for (let i = 0; i < defaultHTMLDataEncoded.length; i += byteCount) {
-              // 4 bytes at a time
-              controller.enqueue(defaultHTMLDataEncoded.slice(i, byteCount))
+              controller.enqueue(defaultHTMLDataEncoded.slice(i, i + byteCount))
               await Promise.resolve() // await one microtask
             }
             controller.close()
@@ -249,13 +248,10 @@ describe('node-web-stream-helpers', () => {
         let i = 0
         const reader = output.getReader()
         let { done, value } = await reader.read()
-        const decoder = new TextDecoder()
-        console.log({ done, value, decoded: decoder.decode(value) })
         while (!done && value) {
           actual.set(value, i)
           i += value.length
           ;({ done, value } = await reader.read())
-          console.log({ done, value, decoded: decoder.decode(value) })
         }
         expect(actual).toStrictEqual(expected)
       })
