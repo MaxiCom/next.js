@@ -1,8 +1,10 @@
 import { setImmediate } from 'timers/promises'
 import {
   chainStreams,
+  continueFizzStream,
   streamFromString,
   streamToString,
+  type ReactReadableStream,
 } from './node-web-streams-helper'
 
 async function processReadableStream(
@@ -188,7 +190,65 @@ describe('node-web-stream-helpers', () => {
   describe('createStripDocumentClosingTagsTransform', () => {})
   describe('createRootLayoutValidatorStream', () => {})
   describe('chainTransformers', () => {})
-  describe('continueFizzStream', () => {})
+  describe('continueFizzStream', () => {
+    describe('pages router', () => {
+      const encoder = new TextEncoder()
+      const defaultSuffix = '<suffix>suffix</suffix>'
+      const defaultInlinedDataStreamFactory = () =>
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode('<data>inlined data</data>'))
+            controller.close()
+          },
+        })
+      const defaultGetServerInsertedHTMLFactory = () => {
+        const serverInsertedHTMLStream = new ReadableStream({
+          start(controller) {
+            controller.enqueue('<server-html>Server HTML</server-html>')
+            controller.close()
+          },
+        })
+        const reader = serverInsertedHTMLStream.getReader()
+        return async () => {
+          const { value } = await reader.read()
+          return value
+        }
+      }
+      const defaultOptionsFactory = () => {
+        // values hardcoded based on usage of `continueFizzStream` in `server/render.tsx`
+        return {
+          isStaticGeneration: true, // always true
+          serverInsertedHTMLToHead: false, // always false
+          validateRootLayout: undefined, // always undefined
+          inlinedDataStream: defaultInlinedDataStreamFactory(),
+          getServerInsertedHTML: defaultGetServerInsertedHTMLFactory(),
+          suffix: defaultSuffix,
+        }
+      }
+      const defaultHTMLData = `<html><head><title>My Website</title></head><body><div><h1>My Website</h1></div></body></html>;`
+      const defaultHTMLDataEncoded = encoder.encode(defaultHTMLData)
+      it.only('should continue fizz stream operation using default arguments', async () => {
+        const input: ReactReadableStream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(defaultHTMLDataEncoded)
+            controller.close()
+          },
+        })
+        // TODO: Somehow spy on `input.allReady` and assert it gets awaited
+        const output = await continueFizzStream(input, defaultOptionsFactory())
+        await processReadableStream(output, [
+          encoder.encode('<server-html>Server HTML</server-html>'),
+          encoder.encode(
+            '<html><head><title>My Website</title></head><body><div><h1>My Website</h1></div>'
+          ),
+          encoder.encode(';'),
+          encoder.encode('<data>inlined data</data>'),
+          encoder.encode('<suffix>suffix</suffix>'),
+          encoder.encode('</body></html>'),
+        ])
+      })
+    })
+  })
   describe('continueDynamicPrerender', () => {})
   describe('continueStaticPrerender', () => {})
   describe('continueDynamicHTMLResume', () => {})
