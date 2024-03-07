@@ -227,25 +227,37 @@ describe('node-web-stream-helpers', () => {
       }
       const defaultHTMLData = `<html><head><title>My Website</title></head><body><div><h1>My Website</h1></div></body></html>;`
       const defaultHTMLDataEncoded = encoder.encode(defaultHTMLData)
-      it.only('should continue fizz stream operation using default arguments', async () => {
-        const input: ReactReadableStream = new ReadableStream({
-          start(controller) {
-            controller.enqueue(defaultHTMLDataEncoded)
+      const defaultReactReadableStreamFactory = (byteCount: number = 4) =>
+        new ReadableStream({
+          async pull(controller) {
+            for (let i = 0; i < defaultHTMLDataEncoded.length; i += byteCount) {
+              // 4 bytes at a time
+              controller.enqueue(defaultHTMLDataEncoded.slice(i, byteCount))
+              await Promise.resolve() // await one microtask
+            }
             controller.close()
           },
         })
+      it.only('should continue fizz stream operation using default arguments', async () => {
+        const input: ReactReadableStream = defaultReactReadableStreamFactory(8)
         // TODO: Somehow spy on `input.allReady` and assert it gets awaited
         const output = await continueFizzStream(input, defaultOptionsFactory())
-        await processReadableStream(output, [
-          encoder.encode('<server-html>Server HTML</server-html>'),
-          encoder.encode(
-            '<html><head><title>My Website</title></head><body><div><h1>My Website</h1></div>'
-          ),
-          encoder.encode(';'),
-          encoder.encode('<data>inlined data</data>'),
-          encoder.encode('<suffix>suffix</suffix>'),
-          encoder.encode('</body></html>'),
-        ])
+        const expected = encoder.encode(
+          '<server-html>Server HTML</server-html><html><head><title>My Website</title></head><body><div><h1>My Website</h1></div>;<data>inlined data</data><suffix>suffix</suffix></body></html>'
+        )
+        const actual = new Uint8Array(expected.length)
+        let i = 0
+        const reader = output.getReader()
+        let { done, value } = await reader.read()
+        const decoder = new TextDecoder()
+        console.log({ done, value, decoded: decoder.decode(value) })
+        while (!done && value) {
+          actual.set(value, i)
+          i += value.length
+          ;({ done, value } = await reader.read())
+          console.log({ done, value, decoded: decoder.decode(value) })
+        }
+        expect(actual).toStrictEqual(expected)
       })
     })
   })
