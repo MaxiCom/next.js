@@ -23,6 +23,28 @@ async function processReadableStream(
   expect(value).toStrictEqual(undefined)
 }
 
+const createMockReadableStream = ({
+  input,
+  byteCount = 4,
+  encode = true,
+}: {
+  input: string
+  byteCount?: number
+  encode?: boolean
+}) => {
+  const encoder = new TextEncoder()
+  const chunks = encode ? encoder.encode(input) : input
+  return new ReadableStream({
+    async pull(controller) {
+      for (let i = 0; i < chunks.length; i += byteCount) {
+        controller.enqueue(chunks.slice(i, i + byteCount))
+        await Promise.resolve() // await one microtask
+      }
+      controller.close()
+    },
+  })
+}
+
 describe('node-web-stream-helpers', () => {
   describe('streamFromString', () => {
     it('should encode the string into a stream', async () => {
@@ -195,12 +217,7 @@ describe('node-web-stream-helpers', () => {
       const encoder = new TextEncoder()
       const defaultSuffix = '<suffix>suffix</suffix>'
       const defaultInlinedDataStreamFactory = () =>
-        new ReadableStream({
-          start(controller) {
-            controller.enqueue(encoder.encode('<data>inlined data</data>'))
-            controller.close()
-          },
-        })
+        createMockReadableStream({ input: '<data>inlined data</data>' })
       const defaultGetServerInsertedHTMLFactory = () => {
         const serverInsertedHTMLStream = new ReadableStream({
           start(controller) {
@@ -225,33 +242,29 @@ describe('node-web-stream-helpers', () => {
           suffix: defaultSuffix,
         }
       }
-      const defaultHTMLData = `<html><head><title>My Website</title></head><body><div><h1>My Website</h1></div></body></html>;`
-      const defaultHTMLDataEncoded = encoder.encode(defaultHTMLData)
-      const defaultReactReadableStreamFactory = (byteCount: number = 4) =>
-        new ReadableStream({
-          async pull(controller) {
-            for (let i = 0; i < defaultHTMLDataEncoded.length; i += byteCount) {
-              controller.enqueue(defaultHTMLDataEncoded.slice(i, i + byteCount))
-              await Promise.resolve() // await one microtask
-            }
-            controller.close()
-          },
+      const defaultReactReadableStreamFactory = () =>
+        createMockReadableStream({
+          input: `<html><head><title>My Website</title></head><body><div><h1>My Website</h1></div></body></html>`,
+          byteCount: 8,
         })
       it.only('should continue fizz stream operation using default arguments', async () => {
-        const input: ReactReadableStream = defaultReactReadableStreamFactory(8)
+        const input: ReactReadableStream = defaultReactReadableStreamFactory()
         // TODO: Somehow spy on `input.allReady` and assert it gets awaited
         const output = await continueFizzStream(input, defaultOptionsFactory())
         const expected = encoder.encode(
-          '<server-html>Server HTML</server-html><html><head><title>My Website</title></head><body><div><h1>My Website</h1></div>;<data>inlined data</data><suffix>suffix</suffix></body></html>'
+          '<server-html>Server HTML</server-html><html><head><title>My Website</title></head><body><div><h1>My Website</h1></div><data>inlined data</data><suffix>suffix</suffix></body></html>'
         )
         const actual = new Uint8Array(expected.length)
         let i = 0
         const reader = output.getReader()
+        const d = new TextDecoder()
         let { done, value } = await reader.read()
+        console.log({ done, value, decoded: d.decode(value) })
         while (!done && value) {
           actual.set(value, i)
           i += value.length
           ;({ done, value } = await reader.read())
+          console.log({ done, value, decoded: d.decode(value) })
         }
         expect(actual).toStrictEqual(expected)
       })
